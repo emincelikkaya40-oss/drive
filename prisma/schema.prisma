@@ -1,0 +1,200 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────────────────────────────────────
+// UTILISATEURS PROFESSIONNELS (commerçant / admin uniquement)
+// Le client ne crée PAS de compte (décision MVP) : voir Customer plus bas.
+// ───────────────────────────────────────────────────────────
+enum Role {
+  MERCHANT
+  ADMIN
+}
+
+model User {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  passwordHash String
+  name         String
+  role         Role        @default(MERCHANT)
+  storeLinks   StoreUser[]
+  createdAt    DateTime    @default(now())
+}
+
+// Table de liaison many-to-many : un compte peut gérer plusieurs commerces,
+// un commerce peut avoir plusieurs comptes (gérant + employés).
+model StoreUser {
+  id      String @id @default(cuid())
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId  String
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  storeId String
+
+  @@unique([userId, storeId])
+}
+
+// ───────────────────────────────────────────────────────────
+// COMMERCES (cœur du multi-tenant : tout le reste référence storeId)
+// ───────────────────────────────────────────────────────────
+model Store {
+  id               String       @id @default(cuid())
+  slug             String       @unique   // ex: "boulangerie-dupont" → /boulangerie-dupont
+  name             String
+  description      String?
+  logoUrl          String?
+  coverUrl         String?
+  colorPrimary     String       @default("#C1272D")
+  address          String
+  phone            String
+  isActive         Boolean      @default(true)
+  prepMinutesDefault Int        @default(30)  // délai de préparation par défaut
+
+  staff            StoreUser[]
+  hours            StoreHours[]
+  categories       Category[]
+  products         Product[]
+  orders           Order[]
+
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+}
+
+model StoreHours {
+  id       String  @id @default(cuid())
+  store    Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  storeId  String
+  weekday  Int     // 0 = dimanche ... 6 = samedi
+  opensAt  String  // "09:30"
+  closesAt String  // "22:30"
+  closed   Boolean @default(false)
+
+  @@unique([storeId, weekday])
+}
+
+// ───────────────────────────────────────────────────────────
+// CATALOGUE
+// ───────────────────────────────────────────────────────────
+model Category {
+  id       String    @id @default(cuid())
+  store    Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  storeId  String
+  name     String
+  position Int       @default(0)
+  products Product[]
+}
+
+model Product {
+  id          String      @id @default(cuid())
+  store       Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  storeId     String
+  category    Category    @relation(fields: [categoryId], references: [id])
+  categoryId  String
+  name        String
+  description String?
+  imageUrl    String?
+  sku         String?
+  priceCents  Int
+  vatRate     Float       @default(5.5)
+  unit        String?     // "kg", "pièce", "L"...
+  maxQty      Int?
+  available   Boolean     @default(true)
+  orderItems  OrderItem[]
+  createdAt   DateTime    @default(now())
+}
+
+// ───────────────────────────────────────────────────────────
+// CLIENT (pas de compte : identifié par email à chaque commande)
+// ───────────────────────────────────────────────────────────
+model Customer {
+  id        String   @id @default(cuid())
+  firstName String
+  lastName  String
+  email     String
+  phone     String
+  orders    Order[]
+  createdAt DateTime @default(now())
+}
+
+// ───────────────────────────────────────────────────────────
+// COMMANDES
+// ───────────────────────────────────────────────────────────
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  ACCEPTED
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  number        String      @unique  // "CMD-2026-000124", généré à la création
+  store         Store       @relation(fields: [storeId], references: [id])
+  storeId       String
+  customer      Customer    @relation(fields: [customerId], references: [id])
+  customerId    String
+  items         OrderItem[]
+  status        OrderStatus @default(PENDING_PAYMENT)
+  totalCents    Int
+  prepMinutes   Int?        // délai annoncé au client à la commande
+  prepStartedAt DateTime?   // horodatage du passage en PREPARING
+  payment       Payment?
+  notifications Notification[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model OrderItem {
+  id             String  @id @default(cuid())
+  order          Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId        String
+  product        Product @relation(fields: [productId], references: [id])
+  productId      String
+  name           String  // copie du nom au moment de la commande (historique)
+  unitPriceCents Int
+  quantity       Int
+}
+
+// ───────────────────────────────────────────────────────────
+// PAIEMENT (compte Stripe unique pour le MVP — pas de Connect)
+// ───────────────────────────────────────────────────────────
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  order             Order         @relation(fields: [orderId], references: [id])
+  orderId           String        @unique
+  provider          String        @default("stripe")
+  providerPaymentId String?       // id du PaymentIntent Stripe
+  status            PaymentStatus @default(PENDING)
+  amountCents       Int
+  paidAt            DateTime?
+  refundedAt        DateTime?
+  createdAt         DateTime      @default(now())
+}
+
+// ───────────────────────────────────────────────────────────
+// NOTIFICATIONS (in-app pour le MVP, pluggable email/SMS/push ensuite)
+// ───────────────────────────────────────────────────────────
+model Notification {
+  id        String   @id @default(cuid())
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId   String
+  channel   String   @default("in_app") // "in_app" | "email" | "sms" | "push" (plus tard)
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
