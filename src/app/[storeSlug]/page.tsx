@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import StoreCatalog from "./StoreCatalog";
 
+export const dynamic = "force-dynamic";
+
 // Page publique d'un commerce : /boulangerie-dupont, /epicerie-martin...
 // Toutes les données affichées sont filtrées par storeId dès la requête —
 // un visiteur ne peut jamais voir les produits d'un autre commerce, même

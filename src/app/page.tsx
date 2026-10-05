@@ -2,6 +2,11 @@ import { prisma } from "@/lib/prisma";
 import { ensureSeed } from "@/lib/ensure-seed";
 import Link from "next/link";
 
+// Sans ceci, Next.js tente de pré-générer cette page au moment du build
+// (donc d'exécuter ensureSeed() avant même que le serveur ne tourne), ce
+// qui n'a pas de sens pour une page qui dépend de données live.
+export const dynamic = "force-dynamic";
+
 export default async function Home() {
   await ensureSeed();
   const storeCount = await prisma.store.count();

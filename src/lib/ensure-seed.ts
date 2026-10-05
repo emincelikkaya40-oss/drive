@@ -1,16 +1,16 @@
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
-// Comme Render (API) ne permet pas de changer facilement la commande de
-// build après coup, on auto-crée les comptes de test au premier chargement
-// de la page d'accueil plutôt que via un script séparé à lancer à la main.
-// Idempotent : ne fait rien si les comptes existent déjà.
+// upsert partout : idempotent même si appelé plusieurs fois en parallèle
+// (Next.js peut exécuter une page deux fois pendant la génération statique).
 export async function ensureSeed() {
   const adminExists = await prisma.user.findUnique({ where: { email: "admin@plateforme.fr" } });
   if (adminExists) return;
 
-  await prisma.user.create({
-    data: {
+  await prisma.user.upsert({
+    where: { email: "admin@plateforme.fr" },
+    update: {},
+    create: {
       email: "admin@plateforme.fr",
       passwordHash: await bcrypt.hash("admin1234", 10),
       name: "Administrateur",
@@ -18,8 +18,10 @@ export async function ensureSeed() {
     },
   });
 
-  const merchantUser = await prisma.user.create({
-    data: {
+  const merchantUser = await prisma.user.upsert({
+    where: { email: "commercant@plateforme.fr" },
+    update: {},
+    create: {
       email: "commercant@plateforme.fr",
       passwordHash: await bcrypt.hash("commerce1234", 10),
       name: "Gérant CocciMarket",
@@ -27,8 +29,10 @@ export async function ensureSeed() {
     },
   });
 
-  const store = await prisma.store.create({
-    data: {
+  const store = await prisma.store.upsert({
+    where: { slug: "coccimarket-caen" },
+    update: {},
+    create: {
       slug: "coccimarket-caen",
       name: "CocciMarket",
       description: "Votre supérette de quartier — fruits & légumes, boucherie à la coupe, épicerie",
@@ -38,9 +42,14 @@ export async function ensureSeed() {
     },
   });
 
-  await prisma.storeUser.create({
-    data: { userId: merchantUser.id, storeId: store.id },
+  await prisma.storeUser.upsert({
+    where: { userId_storeId: { userId: merchantUser.id, storeId: store.id } },
+    update: {},
+    create: { userId: merchantUser.id, storeId: store.id },
   });
+
+  const existingCategories = await prisma.category.count({ where: { storeId: store.id } });
+  if (existingCategories > 0) return; // produits déjà créés
 
   const categoriesData = [
     { name: "🥩 Boucherie", products: [
