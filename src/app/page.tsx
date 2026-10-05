@@ -10,6 +10,7 @@ export default async function Home() {
       <h1>✅ Étape 2 : authentification</h1>
       <p>Connexion base de données OK. {storeCount} commerce(s) en base.</p>
       <ul>
+        <li><Link href="/coccimarket-caen">🛒 Boutique CocciMarket (page publique, étape 3)</Link></li>
         <li><Link href="/login">Se connecter</Link></li>
         <li><Link href="/merchant">Espace commerçant (protégé)</Link></li>
         <li><Link href="/admin">Espace admin (protégé)</Link></li>

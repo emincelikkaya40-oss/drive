@@ -42,7 +42,7 @@ export const authOptions: NextAuthOptions = {
     },
     // ...puis dans la session exposée côté client/serveur.
     async session({ session, token }) {
-      Object.assign(session.user, token);
+      session.user = Object.assign(session.user ?? {}, token);
       return session;
     },
   },
